@@ -1,0 +1,7 @@
+pdf2image
+numpy
+easyocr
+ollama
+edge-tts
+playsound
+whisper
