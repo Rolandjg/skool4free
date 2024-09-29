@@ -5,3 +5,4 @@ ollama
 edge-tts
 playsound
 whisper
+gradio
