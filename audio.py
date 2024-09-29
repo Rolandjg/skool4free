@@ -2,18 +2,17 @@ import asyncio
 import edge_tts
 import os
 
-VOICE = "en-US-AndrewNeural"
 OUTPUT_DIR = "audio"
 
 # Ensure the output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-async def generate(text) -> bytes:
+async def generate(text, voice) -> bytes:
     """Generate audio from text and return the binary data."""
     # Generate a unique filename for each audio file
     output_file = os.path.join(OUTPUT_DIR, f"audio_{hash(text)}.mp3")
     
-    communicate = edge_tts.Communicate(text, VOICE, rate="+25%")
+    communicate = edge_tts.Communicate(text, voice, rate="+25%")
     with open(output_file, "wb") as file:
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -29,5 +28,15 @@ async def generate(text) -> bytes:
     # Return the audio binary data
     return audio_data
 
+def getAvailiableVoices():
+    voices = asyncio.run(edge_tts.list_voices())
+    result = []
+
+    for voice in voices:
+        result.append(voice['ShortName'])
+
+    return result
+
 if __name__ == "__main__":
-    asyncio.run(generate("Test audio"))
+    asyncio.run(generate("Test audio", "en-US-AvaNeural"))
+    
