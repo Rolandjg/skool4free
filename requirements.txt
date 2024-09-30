@@ -6,3 +6,5 @@ edge-tts
 playsound
 whisper
 gradio
+lmdeploy==0.5.3
+Pillow
