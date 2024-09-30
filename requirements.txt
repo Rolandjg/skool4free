@@ -4,7 +4,7 @@ easyocr
 ollama
 edge-tts
 playsound
-whisper
+openai-whisper
 gradio
 lmdeploy==0.5.3
 Pillow
