@@ -3,12 +3,12 @@ import whisper
 import shutil
 import os
 import asyncio
-import threading
 import llm
 import OCR
-import PDFtoIMG 
+import PDFtoIMG
 import audio
 import util
+import re
 
 # Ensure necessary directories exist
 os.makedirs("pdfs", exist_ok=True)
@@ -18,95 +18,62 @@ os.makedirs("audio", exist_ok=True)
 whisper_model = whisper.load_model("base")
 
 def begin(course_name, course_description, pdf_file, model_name, voice_name):
-    try:
-        if pdf_file is None:
-            return "Please upload a PDF file.", ""
-        
-        # Save the necessary state
-        demo.course_name = course_name
-        demo.course_description = course_description
-        demo.model_name = model_name
-        demo.voice = voice_name  # Store the selected voice
-        demo.current_slide = 0
-        
-        util.clearFolder(os.path.abspath('slides/'))
-        
-        # Convert PDF to images
-        output_dir = "slides"
-        PDFtoIMG.pdf_to_images(pdf_file.name, output_dir)
-        
-        # Get list of slide images
-        slide_images = sorted(
-            [os.path.join(output_dir, img) for img in os.listdir(output_dir) if img.endswith('.png')]
-        )
-        
-        if not slide_images:
-            return "No slides were generated from the PDF.", ""
-        
-        demo.slide_images = slide_images
-        num_slides = len(slide_images)
-        demo.slide_contents = [None] * num_slides
-        demo.lecture_texts = [None] * num_slides
-        demo.audio_paths = [None] * num_slides
-        
-        # Process the first slide immediately
-        slide_image = slide_images[0]
-        slide_text = OCR.ocr(slide_image, 'en')
-        demo.slide_contents[0] = slide_text  # Store the processed content
-        
-        # Pre-generate lecture content and audio for the first slide
-        asyncio.run(pre_generate_lecture_audio(0, slide_text))
-        
-        # Start background processing for remaining slides
-        threading.Thread(target=process_slides_in_background, daemon=True).start()
-        
-        # Return the first slide
-        demo.current_slide += 1
-        return slide_image, f"Slide 1: {slide_text}"
-    except Exception as e:
-        print(f"Error in begin: {e}")
-        return "An error occurred while starting the lecture.", ""
+    if pdf_file is None:
+        return "Please upload a PDF file.", ""
 
-def process_slides_in_background():
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        tasks = []
-        for idx in range(1, len(demo.slide_images)):
-            slide_image = demo.slide_images[idx]
-            # Perform OCR
+    # Use the file path directly
+    pdf_path = pdf_file.name
+    print(f"PDF Path: {pdf_path}")
+
+    util.clearFolder(os.path.abspath("slides/"))
+
+    # Convert PDF to images
+    output_dir = "slides"
+    PDFtoIMG.pdf_to_images(pdf_path, output_dir)
+
+    # Get list of slide images
+    # Get list of slide images
+    slide_images = [img for img in os.listdir(output_dir) if img.endswith('.png')]
+    slide_images.sort(key=natural_sort_key)
+    slide_images = [os.path.join(output_dir, img) for img in slide_images]
+
+    if not slide_images:
+        return "No slides were generated from the PDF.", ""
+
+    # Initialize an empty list to store slide contents
+    slide_contents = []
+
+    # Extract text from each slide using OCR
+    for slide_image in slide_images:
+        if OCR.is_vision_available():
+            slide_text = OCR.ocr_vision(slide_image)
+        else:
             slide_text = OCR.ocr(slide_image, 'en')
-            demo.slide_contents[idx] = slide_text  # Store the processed content
-            
-            # Pre-generate lecture content and audio
-            task = loop.create_task(pre_generate_lecture_audio(idx, slide_text))
-            tasks.append(task)
-        loop.run_until_complete(asyncio.gather(*tasks))
-        loop.close()
-    except Exception as e:
-        print(f"Error in background processing: {e}")
+        slide_contents.append((slide_image, slide_text))
 
-async def pre_generate_lecture_audio(idx, slide_text):
-    try:
-        model_name = demo.model_name
-        voice_name = demo.voice
+    # Store slide contents and model_name in state
+    demo.slides = slide_contents
+    demo.course_name = course_name
+    demo.course_description = course_description
+    demo.current_slide = 0
+    demo.model_name = model_name
+    demo.voice = voice_name
 
-        # Generate lecture content using the LLM
-        lecture_text = llm.generateLecture(demo.course_name, demo.course_description, slide_text, model_name)
-        demo.lecture_texts[idx] = lecture_text  # Store lecture text
+    # Initialize lecture_texts and audio_paths lists
+    num_slides = len(demo.slides)
+    demo.lecture_texts = [None] * num_slides
+    demo.audio_paths = [None] * num_slides
 
-        # Generate the audio asynchronously and store the binary data
-        audio_file_data = await audio.generate(lecture_text, voice_name)
-        demo.audio_paths[idx] = audio_file_data  # Store audio data
-        print(f"Pre-generated lecture audio for slide {idx + 1}")
-    except Exception as e:
-        print(f"Error in pre_generate_lecture_audio for slide {idx + 1}: {e}")
+    # Return the first slide image and text to update the UI
+    slide_image, slide_text = demo.slides[demo.current_slide]
+    demo.current_slide += 1  # Increment slide index
+
+    return slide_image, f"Slide 1: {slide_text}"
 
 def next_slide():
     try:
-        if demo.current_slide < len(demo.slide_images):
-            slide_image = demo.slide_images[demo.current_slide]
-            slide_text = demo.slide_contents[demo.current_slide]
+        if demo.current_slide < len(demo.slides):
+            slide_image, slide_text = demo.slides[demo.current_slide]
             demo.current_slide += 1
             return slide_image, f"Slide {demo.current_slide}: {slide_text}"
         else:
@@ -124,14 +91,17 @@ def play_lecture_audio(slide_text):
             # Use pre-generated audio
             audio_file_data = demo.audio_paths[idx]
         else:
-            # If not pre-generated, generate it now
+            # Generate lecture content using the LLM
             model_name = demo.model_name
             lecture_text = llm.generateLecture(demo.course_name, demo.course_description, slide_text, model_name)
-            # Corrected asyncio.run call
+
+            # Generate the audio synchronously
             audio_file_data = asyncio.run(audio.generate(lecture_text, voice_name))
+
             # Store for future use
             demo.lecture_texts[idx] = lecture_text
             demo.audio_paths[idx] = audio_file_data
+
         return audio_file_data
     except Exception as e:
         print(f"Error in play_lecture_audio: {e}")
@@ -156,7 +126,7 @@ def process_question(audio_file):
         answer_text = llm.generateAnswer(question_text, model_name)
         print(f"Generated answer: {answer_text}")
 
-        # Generate the audio asynchronously and get the audio data
+        # Generate the audio synchronously
         audio_file_data = asyncio.run(audio.generate(answer_text, voice_name))
 
         # Return the transcription and audio data
@@ -176,11 +146,14 @@ def transcribe_audio(audio_file):
         print(f"Error in transcribe_audio: {e}")
         return "An error occurred during transcription."
 
+def natural_sort_key(s):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+
 # Gradio UI components and logic
 with gr.Blocks() as demo:
     # Initialize state variables
-    demo.slide_images = []
-    demo.slide_contents = []
+    demo.slides = []
     demo.lecture_texts = []
     demo.audio_paths = []
     demo.course_name = ""
@@ -192,11 +165,11 @@ with gr.Blocks() as demo:
     # Top row: Model and Voice selection at top right
     with gr.Row():
         with gr.Column(scale=6):
-            gr.Markdown("# Interactive Lecture Application")
+            gr.Markdown("# Skool4Free")
         with gr.Column(scale=2):
             model_choice = gr.Dropdown(
                 util.getAvailiableModels(),
-                value='qwen2.5:3b',  # Set default value
+                value='qwen2.5:3b',
                 label="Choose Model"
             )
         with gr.Column(scale=2):
@@ -283,4 +256,4 @@ with gr.Blocks() as demo:
         outputs=[transcription, answer_audio_output]
     )
 
-demo.launch(share=True)
+demo.launch(share=False, debug=True)

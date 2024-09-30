@@ -37,6 +37,9 @@ def getAvailiableVoices():
 
     return result
 
+def generate_sync(text, voice_name) -> bytes:
+    return asyncio.run(generate(text, voice_name))
+
 if __name__ == "__main__":
     asyncio.run(generate("Test audio", "en-US-AvaNeural"))
     

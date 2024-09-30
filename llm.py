@@ -29,7 +29,17 @@ SYSTEM = """
         ALWAYS end your response with "any questions before we move on to the next slide?"
         Do not simply explain the content on the slides, teach about the content, the slide should complement what you are saying.
         There may be information that is not meant to be read, like dates, authors, chapters, ect. Focus on the core content of the slide that is being lectured on and relevent to the class
+        If there are any questions on the slide, read the question, then answer the question and explain the reasoning behind the answer
 """
+
+chat_history = [
+    {
+        'role': 'system',
+        'content': SYSTEM
+    }
+]
+
+
 
 def remove_non_alphanumeric_keep_spaces(input_string):
     return re.sub(r'[^a-zA-Z0-9\s.,]', '', input_string)
@@ -37,48 +47,53 @@ def remove_non_alphanumeric_keep_spaces(input_string):
 def generateLecture(course_name, description, slideshow, model_name):
     print(f"talking about {slideshow} using {model_name}")
 
+    chat_history.append(
+        {
+            'role': 'user',
+            'content': f'course name: "{course_name}", course description: "{description}", slide content: "{slideshow}"'
+        }
+    )
 
     message = ollama.chat(
-            model=model_name,
-        messages=[        
-            {
-                'role': 'system',
-                'content': SYSTEM,
-            },
-            {
-                'role': 'user',
-                'content': f'course name: "{course_name}", course description: "{description}", slide content: "{slideshow}"'
-            }
-            
-        ],
+        model=model_name,
+        messages=chat_history,
         options={'system':SYSTEM}
     )
     final = remove_non_alphanumeric_keep_spaces(message['message']['content'])
+    chat_history.append(
+        {
+            'role':'assistant',
+            'content': final
+        }
+    )
     print(final)
     return final
 
 def generateAnswer(text, model_name):
     print(f"resonding to {text} using {model_name}")
 
+    chat_history.append(
+        {
+            'role': 'user',
+            'content': f'question from user: {text}'
+        }
+    )
     message = ollama.chat(
             model=model_name,
-        messages=[        
-            {
-                'role': 'system',
-                'content': SYSTEM,
-            },
-            {
-                'role': 'user',
-                'content': f'question from user: {text}'
-            }
-            
-        ],
+        messages=chat_history,
         options={'system':SYSTEM}
     )
+
     final = remove_non_alphanumeric_keep_spaces(message['message']['content'])
+    chat_history.append(
+        {
+            'role':'assistant',
+            'content': final
+        }
+    )
     print(final)
     return final
 
 if __name__ == "__main__":
-    asyncio.run(audio.generate(generateLecture("discrete structures", "this is an introductory course to discrete structures", OCR.ocr("../pdf_images/page_17.png", 'en'))))
-    asyncio.run(audio.generate(generateAnswer("So undirected graphs don't have arrows? How do we know which vertex points to which?")))
+    generateLecture("discrete structures", "this is an introductory course to discrete structures", "Undirected graphs: cool", "qwen2.5:3b")
+    # asyncio.run(audio.generate(generateAnswer("So undirected graphs don't have arrows? How do we know which vertex points to which?")))
