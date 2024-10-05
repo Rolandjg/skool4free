@@ -15,7 +15,7 @@ os.makedirs("pdfs", exist_ok=True)
 os.makedirs("slides", exist_ok=True)
 os.makedirs("audio", exist_ok=True)
 
-whisper_model = whisper.load_model("base")
+whisper_model = whisper.load_model("tiny.en")
 
 def begin(course_name, course_description, pdf_file, model_name, voice_name):
     if pdf_file is None:
@@ -50,6 +50,7 @@ def begin(course_name, course_description, pdf_file, model_name, voice_name):
         else:
             slide_text = OCR.ocr(slide_image, 'en')
         slide_contents.append((slide_image, slide_text))
+    OCR.unload_vision_model() # Unload vision model to save precious VRAM
 
     # Store slide contents and model_name in state
     demo.slides = slide_contents
@@ -71,6 +72,7 @@ def begin(course_name, course_description, pdf_file, model_name, voice_name):
     return slide_image, f"Slide 1: {slide_text}"
 
 def next_slide():
+    print("next slide")
     try:
         if demo.current_slide < len(demo.slides):
             slide_image, slide_text = demo.slides[demo.current_slide]
@@ -82,32 +84,40 @@ def next_slide():
         print(f"Error in next_slide: {e}")
         return None, "An error occurred while moving to the next slide."
 
-def play_lecture_audio(slide_text):
+def play_lecture_audio(speech_text):
+    print("playing lecture audio")
     try:
         voice_name = demo.voice
         idx = demo.current_slide - 1  # Get the index of the current slide
 
         if idx < len(demo.audio_paths) and demo.audio_paths[idx]:
             # Use pre-generated audio
-            audio_file_data = demo.audio_paths[idx]
+            audio_file_path = demo.audio_paths[idx]
+            lecture_text = demo.lecture_texts[idx]
         else:
             # Generate lecture content using the LLM
             model_name = demo.model_name
-            lecture_text = llm.generateLecture(demo.course_name, demo.course_description, slide_text, model_name)
+            lecture_text = llm.generateLecture(
+                demo.course_name, demo.course_description, f"slide number {idx}, {speech_text}", model_name
+            )
 
-            # Generate the audio synchronously
-            audio_file_data = asyncio.run(audio.generate(lecture_text, voice_name))
+            # Generate the audio synchronously and save to file
+            audio_file_path = f"audio/lecture_{idx}.mp3"
+            asyncio.run(audio.generate_to_file(lecture_text, voice_name, audio_file_path))
 
             # Store for future use
             demo.lecture_texts[idx] = lecture_text
-            demo.audio_paths[idx] = audio_file_data
+            demo.audio_paths[idx] = audio_file_path
 
-        return audio_file_data
+        # Return only the audio file path
+        return audio_file_path
     except Exception as e:
         print(f"Error in play_lecture_audio: {e}")
         return None
 
+
 def process_question(audio_file):
+    print("processing question")
     try:
         voice_name = demo.voice
 
@@ -126,16 +136,19 @@ def process_question(audio_file):
         answer_text = llm.generateAnswer(question_text, model_name)
         print(f"Generated answer: {answer_text}")
 
-        # Generate the audio synchronously
-        audio_file_data = asyncio.run(audio.generate(answer_text, voice_name))
+        # Generate the audio synchronously and save to file
+        audio_file_path = f"audio/answer_{demo.current_slide - 1}.mp3"
+        asyncio.run(audio.generate_to_file(answer_text, voice_name, audio_file_path))
 
-        # Return the transcription and audio data
-        return question_text, audio_file_data
+        # Return the transcription and audio file path
+        return question_text, audio_file_path
     except Exception as e:
         print(f"Error in process_question: {e}")
         return "An error occurred while processing your question.", None
 
+
 def transcribe_audio(audio_file):
+    print("transcribing audio")
     try:
         # Transcribe the audio file using the loaded Whisper model
         result = whisper_model.transcribe(audio_file)
@@ -148,7 +161,6 @@ def transcribe_audio(audio_file):
 
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
-
 
 # Gradio UI components and logic
 with gr.Blocks() as demo:
@@ -198,7 +210,7 @@ with gr.Blocks() as demo:
         with gr.Column():
             # Audio recording component
             question_audio = gr.Audio(
-                sources='microphone',  # Correct parameter name
+                sources='microphone',
                 label="Ask a question",
                 type='filepath',
                 interactive=True
@@ -235,8 +247,9 @@ with gr.Blocks() as demo:
     ).then(
         fn=play_lecture_audio,
         inputs=[slide_text_display],
-        outputs=[lecture_audio_output]
+        outputs=[lecture_audio_output]  # Only expecting the audio output
     )
+
 
     # Action when the Next Slide button is pressed
     next_slide_button.click(
@@ -246,7 +259,7 @@ with gr.Blocks() as demo:
     ).then(
         fn=play_lecture_audio,
         inputs=[slide_text_display],
-        outputs=[lecture_audio_output]
+        outputs=[lecture_audio_output]  # Only expecting the audio output
     )
 
     # Action when the Question button is pressed

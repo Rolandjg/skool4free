@@ -3,8 +3,11 @@ numpy
 easyocr
 ollama
 edge-tts
-playsound
 openai-whisper
-gradio
-lmdeploy==0.5.3
+transformers==4.37.2
+torch
 Pillow
+lmdeploy==0.5.3
+gradio
+triton==2.3.1
+

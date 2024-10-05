@@ -1,16 +1,28 @@
 import easyocr
 from lmdeploy import pipeline, TurbomindEngineConfig
 from lmdeploy.vl import load_image
+import lmdeploy
 import os
 from PIL import Image
+import gc
+from time import sleep
+
 
 vision = True
+model = 'OpenGVLab/InternVL2-1B'
 try:
-    model = 'OpenGVLab/InternVL2-1B'
     pipe = pipeline(model, backend_config=TurbomindEngineConfig(session_len=8192))
 except:
     vision = False
     print("could not load vision model")
+
+def unload_vision_model():
+    global pipe
+
+    if vision:
+        del pipe
+        gc.collect()
+    print("unloaded vision model")
 
 def is_vision_available():
     return vision 
@@ -18,16 +30,22 @@ def is_vision_available():
 def ocr(image_path, language):
     print(f"processing {image_path}")
 
+    output_image = resize_image(image_path, 350)  # downscale the image
+
     reader = easyocr.Reader(['en'])
     result = reader.readtext(image_path)
     final = ""
+    
     for words in result:
         final += " " + words[1]
+    
+    os.remove(os.path.abspath(output_image))  # remove the downscaled image
+    
     return final
 
 def ocr_vision(image_path):
     print(f"processing {image_path}")
-    
+
     if vision:
         output_image = resize_image(image_path, 350)  # downscale the image
         image = load_image(os.path.abspath(output_image))
@@ -38,6 +56,7 @@ def ocr_vision(image_path):
         ))
 
         os.remove(os.path.abspath(output_image))  # remove the downscaled image
+        
         return response.text
 
 def resize_image(image_path, width):
@@ -50,3 +69,6 @@ def resize_image(image_path, width):
     img = img.resize((width, hsize), Image.Resampling.LANCZOS)
     img.save(os.path.abspath(output_image))
     return output_image
+
+if __name__ == "__main__":
+    ocr_vision("page_17.png")
