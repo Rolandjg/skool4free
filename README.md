@@ -20,6 +20,7 @@ This project is an interactive lecture application built using Gradio. It allows
     EasyOCR: For extracting text from the slides.
     Ollama LLM: For generating the lecture and answering questions.
     Edge TTS: For generating the lecture and answer audio.
+    lmdeploy: For vision language models.
 
 # Installation
     1. Install ollama for your system at ollama.com
@@ -58,3 +59,5 @@ This project is an interactive lecture application built using Gradio. It allows
   
       Use the "Ask a question" section to record a voice question.
       Click Submit Question to have your question transcribed, and the LLM will respond with a spoken answer, which will be played automatically.
+
+Tested on Fedora Linux with python 12.5 cuda 11.8
