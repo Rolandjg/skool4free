@@ -17,7 +17,7 @@ os.makedirs("audio", exist_ok=True)
 
 whisper_model = whisper.load_model("tiny.en")
 
-def begin(course_name, course_description, pdf_file, model_name, voice_name):
+def begin(course_name, course_description, pdf_file, model_name, voice_name, start_number):
     if pdf_file is None:
         return "Please upload a PDF file.", ""
 
@@ -32,10 +32,10 @@ def begin(course_name, course_description, pdf_file, model_name, voice_name):
     PDFtoIMG.pdf_to_images(pdf_path, output_dir)
 
     # Get list of slide images
-    # Get list of slide images
     slide_images = [img for img in os.listdir(output_dir) if img.endswith('.png')]
     slide_images.sort(key=natural_sort_key)
     slide_images = [os.path.join(output_dir, img) for img in slide_images]
+    slide_images = slide_images[int(start_number):]
 
     if not slide_images:
         return "No slides were generated from the PDF.", ""
@@ -234,6 +234,8 @@ with gr.Blocks() as demo:
                 label="Upload PDF",
                 file_types=[".pdf"]
             )
+        #Start number
+        start_number = gr.Number(label="start number")
 
     # Start button
     with gr.Row():
@@ -242,14 +244,13 @@ with gr.Blocks() as demo:
     # Action when the Start button is pressed
     start_button.click(
         fn=begin,
-        inputs=[course_name, course_description, pdf_file, model_choice, voice_choice],
+        inputs=[course_name, course_description, pdf_file, model_choice, voice_choice, start_number],
         outputs=[slide_image_display, slide_text_display]
     ).then(
         fn=play_lecture_audio,
         inputs=[slide_text_display],
         outputs=[lecture_audio_output]  # Only expecting the audio output
     )
-
 
     # Action when the Next Slide button is pressed
     next_slide_button.click(
